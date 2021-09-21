@@ -16,17 +16,33 @@ variable "az_num_list" {
 
 
 variable "resource_cnt" {
-  type    = number
-  default = 2
+  type = number
 }
 
 variable "ec2_conf" {
   type = map(string)
   default = {
-    ami           = "ami-02892a4ea9bfa2192"
-    instance_type = "t2.micro"
-    key_pair      = "common_key"
+    # ami           = ""
+    # instance_type = ""
+    # key_pair      = ""
   }
-
 }
 
+
+variable "rds_conf" {
+  type = map(string)
+  default = {
+    # allocated_storage    = ""
+    # engine               = ""
+    # engine_version       = ""
+    # instance_class       = ""
+    # name                 = ""
+    # parameter_group_name = ""
+    # master_name          = ""
+    # master_pass          = ""
+  }
+}
+
+variable "cert_arn" {
+ type = string  
+}

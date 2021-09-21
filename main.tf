@@ -69,14 +69,16 @@ resource "aws_route_table_association" "pub" {
   count          = var.resource_cnt
   subnet_id      = aws_subnet.pub_sbn[count.index].id
   route_table_id = aws_route_table.rtb.id
-
 }
 
+# --------------------------------------------#
+# ec2 security group
+# --------------------------------------------#
 
-resource "aws_security_group" "sg" {
+resource "aws_security_group" "ec2_sg" {
 
-  name        = "allow_sg"
-  description = "Allow inbound traffic"
+  name        = "ec2_sg"
+  description = "Allow inbound traffic ec2"
   vpc_id      = aws_vpc.vpc.id
 
   tags = {
@@ -84,10 +86,35 @@ resource "aws_security_group" "sg" {
   }
 }
 
-resource "aws_security_group" "alb_sg" {
+resource "aws_security_group_rule" "ec2_ssh" {
+  description       = "Allow ssh traffic from internet"
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.ec2_sg.id
+}
 
+
+resource "aws_security_group_rule" "allow_http" {
+  description              = "Allow http traffic from alb"
+  type                     = "ingress"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb_sg.id
+  security_group_id        = aws_security_group.ec2_sg.id
+}
+
+# --------------------------------------------#
+# alb security group
+# --------------------------------------------#
+
+
+resource "aws_security_group" "alb_sg" {
   name        = "alb_sg"
-  description = "Allow inbound traffic"
+  description = "Allow inbound traffic alb"
   vpc_id      = aws_vpc.vpc.id
 
   tags = {
@@ -95,26 +122,8 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-resource "aws_security_group_rule" "allow_ssh" {
-  type              = "ingress"
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.sg.id
-}
-
-resource "aws_security_group_rule" "allow_http" {
-  type                     = "ingress"
-  from_port                = 80
-  to_port                  = 80
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb_sg.id
-  security_group_id        = aws_security_group.sg.id
-}
-
-
 resource "aws_security_group_rule" "alb_http" {
+  description       = "Allow http traffic from internet"
   type              = "ingress"
   from_port         = 80
   to_port           = 80
@@ -122,6 +131,47 @@ resource "aws_security_group_rule" "alb_http" {
   cidr_blocks       = ["0.0.0.0/0"]
   security_group_id = aws_security_group.alb_sg.id
 }
+
+resource "aws_security_group_rule" "alb_https" {
+  description       = "Allow https traffic from internet"
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb_sg.id
+}
+
+
+# --------------------------------------------#
+# rds security group
+# --------------------------------------------#
+
+resource "aws_security_group" "rds_sg" {
+  name        = "rds_sg"
+  description = "Allow inbound traffic rds"
+  vpc_id      = aws_vpc.vpc.id
+  tags = {
+    Name = "${var.tag_prefix}-sg-rds"
+  }
+}
+
+resource "aws_security_group_rule" "rds_mysql" {
+  description              = "Allow mysql traffic from ec2_sg"
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ec2_sg.id
+  security_group_id        = aws_security_group.rds_sg.id
+}
+
+
+
+
+# --------------------------------------------#
+# security group outbound allow rules
+# --------------------------------------------#
 
 
 
@@ -131,7 +181,7 @@ resource "aws_security_group_rule" "allow_outbound" {
   protocol          = "-1"
   from_port         = 0
   cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.sg.id
+  security_group_id = aws_security_group.ec2_sg.id
 }
 
 resource "aws_security_group_rule" "alb_outbound" {
@@ -143,13 +193,26 @@ resource "aws_security_group_rule" "alb_outbound" {
   security_group_id = aws_security_group.alb_sg.id
 }
 
+resource "aws_security_group_rule" "rds_outbound" {
+  type              = "egress"
+  to_port           = 0
+  protocol          = "-1"
+  from_port         = 0
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.rds_sg.id
+}
 
-resource "aws_instance" "ec2_pub" {
+
+# --------------------------------------------#
+# ec2 instance
+# --------------------------------------------#
+
+resource "aws_instance" "ec2" {
 
   count                       = var.resource_cnt
   ami                         = lookup(var.ec2_conf, "ami")
   instance_type               = lookup(var.ec2_conf, "instance_type")
-  vpc_security_group_ids      = [aws_security_group.sg.id]
+  vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
   subnet_id                   = aws_subnet.pub_sbn[count.index].id
   key_name                    = lookup(var.ec2_conf, "key_pair")
   associate_public_ip_address = "true"
@@ -172,10 +235,12 @@ resource "aws_alb" "alb" {
   }
 }
 
-resource "aws_lb_listener" "http_access" {
+resource "aws_lb_listener" "https_access" {
   load_balancer_arn = aws_alb.alb.arn
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = var.cert_arn
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.alb_tg.arn
@@ -192,8 +257,47 @@ resource "aws_lb_target_group" "alb_tg" {
 
 # tgにインスタンスを紐づける設定？っぽい
 resource "aws_lb_target_group_attachment" "alb_tg_assoc" {
-  count =  var.resource_cnt
+  count            = var.resource_cnt
   target_group_arn = aws_lb_target_group.alb_tg.arn
-  target_id        = aws_instance.ec2_pub[count.index].id
+  target_id        = aws_instance.ec2[count.index].id
   port             = 80
+}
+
+
+resource "aws_db_subnet_group" "rds-sbn-gp" {
+  name       = "rds-sbn-gp"
+  subnet_ids = aws_subnet.pvt_sbn.*.id
+
+  tags = {
+    Name = "rds-sbn-gp"
+  }
+}
+
+resource "aws_db_instance" "rds" {
+
+  depends_on = [
+    aws_security_group.rds_sg
+  ]
+
+  allocated_storage      = lookup(var.rds_conf, "allocated_storage")
+  engine                 = lookup(var.rds_conf, "engine")
+  engine_version         = lookup(var.rds_conf, "engine_version")
+  instance_class         = lookup(var.rds_conf, "instance_class")
+  name                   = lookup(var.rds_conf, "name")
+  username               = lookup(var.rds_conf, "master_name")
+  password               = lookup(var.rds_conf, "master_pass")
+  parameter_group_name   = lookup(var.rds_conf, "parameter_group_name")
+  skip_final_snapshot    = true
+  db_subnet_group_name   = aws_db_subnet_group.rds-sbn-gp.id
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+}
+
+
+resource "aws_s3_bucket" "bucket1" {
+  bucket = "${var.tag_prefix}-bucket-1"
+  acl    = "private"
+
+  tags = {
+    Name        = "${var.tag_prefix}-bucket-1"
+  }
 }
