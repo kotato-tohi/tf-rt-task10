@@ -111,15 +111,6 @@ resource "aws_security_group_rule" "ec2_ssh" {
 }
 
 
-# resource "aws_security_group_rule" "allow_http" {
-#   description              = "Allow http traffic from alb"
-#   type                     = "ingress"
-#   from_port                = 80
-#   to_port                  = 80
-#   protocol                 = "tcp"
-#   source_security_group_id = aws_security_group.alb_sg.id
-#   security_group_id        = aws_security_group.ec2_sg.id
-# }
 
 resource "aws_security_group_rule" "ec2_http" {
   description              = "Allow http traffic from alb"
