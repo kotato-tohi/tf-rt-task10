@@ -81,6 +81,20 @@ resource "aws_security_group" "ec2_sg" {
   description = "Allow inbound traffic ec2"
   vpc_id      = aws_vpc.vpc.id
 
+  egress = [
+    {
+      description      = "test"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = true
+    }
+  ]
+
   tags = {
     Name = "${var.tag_prefix}-sg-ec2"
   }
@@ -97,7 +111,17 @@ resource "aws_security_group_rule" "ec2_ssh" {
 }
 
 
-resource "aws_security_group_rule" "allow_http" {
+# resource "aws_security_group_rule" "allow_http" {
+#   description              = "Allow http traffic from alb"
+#   type                     = "ingress"
+#   from_port                = 80
+#   to_port                  = 80
+#   protocol                 = "tcp"
+#   source_security_group_id = aws_security_group.alb_sg.id
+#   security_group_id        = aws_security_group.ec2_sg.id
+# }
+
+resource "aws_security_group_rule" "ec2_http" {
   description              = "Allow http traffic from alb"
   type                     = "ingress"
   from_port                = 80
@@ -106,6 +130,7 @@ resource "aws_security_group_rule" "allow_http" {
   source_security_group_id = aws_security_group.alb_sg.id
   security_group_id        = aws_security_group.ec2_sg.id
 }
+
 
 # --------------------------------------------#
 # alb security group
@@ -116,6 +141,19 @@ resource "aws_security_group" "alb_sg" {
   name        = "alb_sg"
   description = "Allow inbound traffic alb"
   vpc_id      = aws_vpc.vpc.id
+  egress = [
+    {
+      description      = "test"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = true
+    }
+  ]
 
   tags = {
     Name = "${var.tag_prefix}-sg-alb"
@@ -151,6 +189,20 @@ resource "aws_security_group" "rds_sg" {
   name        = "rds_sg"
   description = "Allow inbound traffic rds"
   vpc_id      = aws_vpc.vpc.id
+  egress = [
+    {
+      description      = "test"
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = true
+    }
+  ]
+
   tags = {
     Name = "${var.tag_prefix}-sg-rds"
   }
@@ -167,40 +219,6 @@ resource "aws_security_group_rule" "rds_mysql" {
 }
 
 
-
-
-# --------------------------------------------#
-# security group outbound allow rules
-# --------------------------------------------#
-
-
-
-resource "aws_security_group_rule" "allow_outbound" {
-  type              = "egress"
-  to_port           = 0
-  protocol          = "-1"
-  from_port         = 0
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.ec2_sg.id
-}
-
-resource "aws_security_group_rule" "alb_outbound" {
-  type              = "egress"
-  to_port           = 0
-  protocol          = "-1"
-  from_port         = 0
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.alb_sg.id
-}
-
-resource "aws_security_group_rule" "rds_outbound" {
-  type              = "egress"
-  to_port           = 0
-  protocol          = "-1"
-  from_port         = 0
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.rds_sg.id
-}
 
 
 # --------------------------------------------#
@@ -222,6 +240,9 @@ resource "aws_instance" "ec2" {
   }
 }
 
+# --------------------------------------------#
+# application load balancer (https)
+# --------------------------------------------#
 
 resource "aws_alb" "alb" {
   name               = "${var.tag_prefix}-alb"
@@ -264,33 +285,41 @@ resource "aws_lb_target_group_attachment" "alb_tg_assoc" {
 }
 
 
-resource "aws_db_subnet_group" "rds-sbn-gp" {
-  name       = "rds-sbn-gp"
-  subnet_ids = aws_subnet.pvt_sbn.*.id
+# --------------------------------------------#
+# RDS
+# --------------------------------------------#
 
-  tags = {
-    Name = "rds-sbn-gp"
-  }
-}
+# resource "aws_db_subnet_group" "rds-sbn-gp" {
+#   name       = "rds-sbn-gp"
+#   subnet_ids = aws_subnet.pvt_sbn.*.id
 
-resource "aws_db_instance" "rds" {
+#   tags = {
+#     Name = "rds-sbn-gp"
+#   }
+# }
 
-  depends_on = [
-    aws_security_group.rds_sg
-  ]
+# resource "aws_db_instance" "rds" {
 
-  allocated_storage      = lookup(var.rds_conf, "allocated_storage")
-  engine                 = lookup(var.rds_conf, "engine")
-  engine_version         = lookup(var.rds_conf, "engine_version")
-  instance_class         = lookup(var.rds_conf, "instance_class")
-  name                   = lookup(var.rds_conf, "name")
-  username               = lookup(var.rds_conf, "master_name")
-  password               = lookup(var.rds_conf, "master_pass")
-  parameter_group_name   = lookup(var.rds_conf, "parameter_group_name")
-  skip_final_snapshot    = true
-  db_subnet_group_name   = aws_db_subnet_group.rds-sbn-gp.id
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-}
+#   depends_on = [
+#     aws_security_group.rds_sg
+#   ]
+
+#   allocated_storage      = lookup(var.rds_conf, "allocated_storage")
+#   engine                 = lookup(var.rds_conf, "engine")
+#   engine_version         = lookup(var.rds_conf, "engine_version")
+#   instance_class         = lookup(var.rds_conf, "instance_class")
+#   name                   = lookup(var.rds_conf, "name")
+#   username               = lookup(var.rds_conf, "master_name")
+#   password               = lookup(var.rds_conf, "master_pass")
+#   parameter_group_name   = lookup(var.rds_conf, "parameter_group_name")
+#   skip_final_snapshot    = true
+#   db_subnet_group_name   = aws_db_subnet_group.rds-sbn-gp.id
+#   vpc_security_group_ids = [aws_security_group.rds_sg.id]
+# }
+
+# --------------------------------------------#
+# S3
+# --------------------------------------------#
 
 
 resource "aws_s3_bucket" "bucket1" {
@@ -298,6 +327,6 @@ resource "aws_s3_bucket" "bucket1" {
   acl    = "private"
 
   tags = {
-    Name        = "${var.tag_prefix}-bucket-1"
+    Name = "${var.tag_prefix}-bucket-1"
   }
 }

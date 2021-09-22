@@ -44,5 +44,5 @@ variable "rds_conf" {
 }
 
 variable "cert_arn" {
- type = string  
+  type = string
 }
